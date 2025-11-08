@@ -1,3 +1,58 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('parent');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$child = getParentChild($user_id);
+
+// Handle support ticket submission
+$success_message = '';
+$error_message = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ticket'])) {
+    $subject = sanitize($_POST['subject'] ?? '');
+    $message = sanitize($_POST['message'] ?? '');
+    $priority = sanitize($_POST['priority'] ?? 'medium');
+    
+    if (empty($subject) || empty($message)) {
+        $error_message = 'Subject and message are required';
+    } else {
+        $db = getDB();
+        $stmt = $db->prepare("
+            INSERT INTO support_tickets (user_id, subject, message, priority, status)
+            VALUES (?, ?, ?, ?, 'open')
+        ");
+        $stmt->bind_param("isss", $user_id, $subject, $message, $priority);
+        
+        if ($stmt->execute()) {
+            $success_message = 'Support ticket submitted successfully! We will get back to you soon.';
+            logActivity('support_ticket_created', "Support ticket created: {$subject}", $user_id);
+            
+            // Notify admin
+            $adminStmt = $db->prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+            $adminStmt->execute();
+            $adminResult = $adminStmt->get_result();
+            if ($adminResult->num_rows > 0) {
+                $admin = $adminResult->fetch_assoc();
+                createNotification($admin['id'], 'support_ticket', 'New Support Ticket', 
+                    "{$user['full_name']} submitted a support ticket: {$subject}");
+            }
+            $adminStmt->close();
+        } else {
+            $error_message = 'Failed to submit support ticket';
+        }
+        $stmt->close();
+    }
+}
+
+// Get child's name or default
+$child_name = $child ? $child['name'] : 'Your Child';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +78,16 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Sarah! Let's make today great for Alex</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name']); ?>! Let's make today great for <?php echo htmlspecialchars($child_name); ?></p>
             </div>
             <div class="flex items-center space-x-4">
-                <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span class="text-blue-600 font-bold">SM</span>
+                    <span class="text-blue-600 font-bold"><?php echo strtoupper(substr($user['full_name'], 0, 2)); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Sarah M.</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars(explode(' ', $user['full_name'])[0]); ?></span>
             </div>
         </div>
     </header>
@@ -59,16 +116,16 @@
                     <i class="fas fa-chart-line"></i>
                     <span>Progress</span>
                 </a>
-                <a href="support.php" class="flex items-center space-x-3 px-4 py-3 bg-blue-50 text-blue-600 rounded-lg font-semibold border-l-4 border-blue-500">
+                <a href="support.php" class="flex items-center space-x-3 px-4 py-3 bg-blue-50 text-blue-600 rounded-lg font-semibold">
                     <i class="fas fa-question-circle"></i>
                     <span>Support</span>
                 </a>
             </nav>
             <div class="mt-8 p-4 bg-white rounded-lg">
                 <p class="font-semibold text-gray-800 mb-2">Need Help?</p>
-                <button class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold">
+                <a href="#contact-support" class="block w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold text-center">
                     Contact our support
-                </button>
+                </a>
             </div>
             <p class="mt-4 text-xs text-gray-500">Do not sell or share my personal info</p>
         </aside>
@@ -79,6 +136,18 @@
                 <h1 class="text-3xl font-bold text-gray-800 mb-2">Support & Community</h1>
                 <p class="text-gray-600">Connect with other parents and access helpful resources.</p>
             </div>
+
+            <?php if ($success_message): ?>
+                <div class="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+                    <?php echo htmlspecialchars($success_message); ?>
+                </div>
+            <?php endif; ?>
+
+            <?php if ($error_message): ?>
+                <div class="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                    <?php echo htmlspecialchars($error_message); ?>
+                </div>
+            <?php endif; ?>
 
             <!-- Action Cards -->
             <div class="grid md:grid-cols-3 gap-6 mb-8">
@@ -106,73 +175,40 @@
             </div>
 
             <div class="grid lg:grid-cols-3 gap-6">
-                <!-- Community Forum -->
+                <!-- Contact Support Form -->
                 <div class="lg:col-span-2">
-                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6">
+                    <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6" id="contact-support">
                         <div class="flex items-center space-x-2 mb-4">
-                            <i class="fas fa-comments text-blue-500"></i>
-                            <h2 class="text-xl font-bold text-gray-800">Community Forum</h2>
+                            <i class="fas fa-envelope text-blue-500"></i>
+                            <h2 class="text-xl font-bold text-gray-800">Contact Support</h2>
                         </div>
-                        <div class="mb-6">
-                            <textarea class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="3" placeholder="Share your experiences, ask questions, or offer support..."></textarea>
-                            <button class="mt-3 px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
-                                Post to Community
+                        <form method="POST" action="support.php">
+                            <div class="mb-4">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Subject *</label>
+                                <input type="text" name="subject" required
+                                       class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                       placeholder="What can we help you with?">
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Priority</label>
+                                <select name="priority" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                                    <option value="low">Low</option>
+                                    <option value="medium" selected>Medium</option>
+                                    <option value="high">High</option>
+                                    <option value="urgent">Urgent</option>
+                                </select>
+                            </div>
+                            <div class="mb-4">
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Message *</label>
+                                <textarea name="message" rows="5" required
+                                          class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                          placeholder="Describe your issue or question..."></textarea>
+                            </div>
+                            <button type="submit" name="submit_ticket" 
+                                    class="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                                Submit Support Ticket
                             </button>
-                        </div>
-                        <div class="space-y-4">
-                            <!-- Post 1 -->
-                            <div class="border-b border-gray-200 pb-4">
-                                <div class="flex items-start space-x-4 mb-3">
-                                    <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                        <span class="text-blue-600 font-bold">MJ</span>
-                                    </div>
-                                    <div class="flex-1">
-                                        <div class="flex items-center space-x-2 mb-1">
-                                            <span class="font-semibold text-gray-800">Maria J.</span>
-                                            <span class="text-sm text-gray-500">2 hours ago</span>
-                                        </div>
-                                        <h3 class="font-bold text-gray-800 mb-2">Visual schedule templates that worked for us</h3>
-                                        <p class="text-gray-600 mb-3">Wanted to share some visual schedule templates we've been using with our son. They've really helped with morning routines!</p>
-                                        <div class="flex items-center space-x-4">
-                                            <button class="flex items-center space-x-2 text-gray-600 hover:text-blue-600">
-                                                <i class="fas fa-thumbs-up"></i>
-                                                <span>24</span>
-                                            </button>
-                                            <button class="flex items-center space-x-2 text-gray-600 hover:text-blue-600">
-                                                <i class="fas fa-comment"></i>
-                                                <span>8 replies</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- Post 2 -->
-                            <div class="border-b border-gray-200 pb-4">
-                                <div class="flex items-start space-x-4 mb-3">
-                                    <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                                        <span class="text-green-600 font-bold">TS</span>
-                                    </div>
-                                    <div class="flex-1">
-                                        <div class="flex items-center space-x-2 mb-1">
-                                            <span class="font-semibold text-gray-800">Tom S.</span>
-                                            <span class="text-sm text-gray-500">5 hours ago</span>
-                                        </div>
-                                        <h3 class="font-bold text-gray-800 mb-2">Transition strategies during sessions</h3>
-                                        <p class="text-gray-600 mb-3">Does anyone have tips for helping with transitions during learning sessions? My daughter struggles when switching activities.</p>
-                                        <div class="flex items-center space-x-4">
-                                            <button class="flex items-center space-x-2 text-gray-600 hover:text-blue-600">
-                                                <i class="fas fa-thumbs-up"></i>
-                                                <span>15</span>
-                                            </button>
-                                            <button class="flex items-center space-x-2 text-gray-600 hover:text-blue-600">
-                                                <i class="fas fa-comment"></i>
-                                                <span>12 replies</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        </form>
                     </div>
                 </div>
 
@@ -221,12 +257,5 @@
             </div>
         </main>
     </div>
-
-    <!-- Floating Help Button -->
-    <div class="fixed bottom-6 right-6 w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-blue-600 transition">
-        <i class="fas fa-question text-white text-xl"></i>
-    </div>
 </body>
 </html>
-
-

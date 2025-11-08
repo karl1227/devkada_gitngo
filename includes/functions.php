@@ -51,6 +51,82 @@ function getUpcomingSessions($parent_id, $limit = 5) {
     return $sessions;
 }
 
+// Get all sessions for parent (with optional filters)
+function getAllSessions($parent_id, $status = null, $month = null, $year = null) {
+    $db = getDB();
+    $query = "
+        SELECT s.*, t.id as teacher_id, u.full_name as teacher_name, c.name as child_name
+        FROM sessions s
+        JOIN teachers t ON s.teacher_id = t.id
+        JOIN users u ON t.user_id = u.id
+        JOIN children c ON s.child_id = c.id
+        WHERE s.parent_id = ?
+    ";
+    $params = [];
+    $types = "i";
+    
+    if ($status !== null) {
+        $query .= " AND s.status = ?";
+        $params[] = $status;
+        $types .= "s";
+    }
+    
+    if ($month !== null && $year !== null) {
+        $query .= " AND MONTH(s.session_date) = ? AND YEAR(s.session_date) = ?";
+        $params[] = $month;
+        $params[] = $year;
+        $types .= "ii";
+    }
+    
+    $query .= " ORDER BY s.session_date DESC, s.session_time DESC";
+    
+    $stmt = $db->prepare($query);
+    if (!empty($params)) {
+        $stmt->bind_param($types, $parent_id, ...$params);
+    } else {
+        $stmt->bind_param("i", $parent_id);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $sessions = [];
+    while ($row = $result->fetch_assoc()) {
+        $sessions[] = $row;
+    }
+    $stmt->close();
+    return $sessions;
+}
+
+// Get session by ID
+function getSessionById($session_id, $parent_id = null) {
+    $db = getDB();
+    if ($parent_id) {
+        $stmt = $db->prepare("
+            SELECT s.*, t.id as teacher_id, u.full_name as teacher_name, c.name as child_name
+            FROM sessions s
+            JOIN teachers t ON s.teacher_id = t.id
+            JOIN users u ON t.user_id = u.id
+            JOIN children c ON s.child_id = c.id
+            WHERE s.id = ? AND s.parent_id = ?
+        ");
+        $stmt->bind_param("ii", $session_id, $parent_id);
+    } else {
+        $stmt = $db->prepare("
+            SELECT s.*, t.id as teacher_id, u.full_name as teacher_name, c.name as child_name
+            FROM sessions s
+            JOIN teachers t ON s.teacher_id = t.id
+            JOIN users u ON t.user_id = u.id
+            JOIN children c ON s.child_id = c.id
+            WHERE s.id = ?
+        ");
+        $stmt->bind_param("i", $session_id);
+    }
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $session = $result->fetch_assoc();
+    $stmt->close();
+    return $session;
+}
+
 // Get progress stats for child
 function getChildProgressStats($child_id) {
     $db = getDB();

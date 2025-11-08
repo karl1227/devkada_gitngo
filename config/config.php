@@ -6,6 +6,11 @@ session_start();
 define('BASE_URL', 'http://localhost/devkada_gitngo/');
 define('UPLOAD_PATH', __DIR__ . '/../uploads/');
 
+// OpenAI API Configuration
+// Get your API key from: https://platform.openai.com/api-keys
+// Add your API key here or set it as an environment variable
+define('OPENAI_API_KEY', getenv('OPENAI_API_KEY') ?: 'YOUR_OPENAI_API_KEY_HERE');
+
 // Timezone
 date_default_timezone_set('America/Los_Angeles');
 

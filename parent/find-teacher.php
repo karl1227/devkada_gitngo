@@ -1,3 +1,44 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('parent');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$child = getParentChild($user_id);
+
+// Get filters from query
+$location_filter = sanitize($_GET['location'] ?? '');
+$specialization_filter = sanitize($_GET['specialization'] ?? '');
+$availability_filter = sanitize($_GET['availability'] ?? '');
+
+// Build filters array
+$filters = [];
+if (!empty($location_filter)) {
+    $filters['location'] = $location_filter;
+}
+if (!empty($specialization_filter)) {
+    $filters['specialization'] = $specialization_filter;
+}
+
+// Get all verified teachers
+$teachers = getVerifiedTeachers($filters);
+
+// Get all specializations for filter dropdown
+$db = getDB();
+$stmt = $db->query("SELECT DISTINCT specialization FROM teacher_specializations ORDER BY specialization");
+$all_specializations = [];
+while ($row = $stmt->fetch_assoc()) {
+    $all_specializations[] = $row['specialization'];
+}
+$stmt->close();
+
+// Get child's name or default
+$child_name = $child ? $child['name'] : 'Your Child';
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +64,16 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Sarah! Let's make today great for Alex</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name']); ?>! Let's make today great for <?php echo htmlspecialchars($child_name); ?></p>
             </div>
             <div class="flex items-center space-x-4">
-                <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span class="text-blue-600 font-bold">SM</span>
+                    <span class="text-blue-600 font-bold"><?php echo strtoupper(substr($user['full_name'], 0, 2)); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Sarah M.</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars(explode(' ', $user['full_name'])[0]); ?></span>
             </div>
         </div>
     </header>
@@ -66,9 +109,9 @@
             </nav>
             <div class="mt-8 p-4 bg-white rounded-lg">
                 <p class="font-semibold text-gray-800 mb-2">Need Help?</p>
-                <button class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold">
+                <a href="support.php" class="block w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold text-center">
                     Contact our support
-                </button>
+                </a>
             </div>
             <p class="mt-4 text-xs text-gray-500">Do not sell or share my personal info</p>
         </aside>
@@ -82,195 +125,129 @@
 
             <!-- Search Filters -->
             <div class="bg-gray-100 rounded-xl p-6 mb-8">
-                <div class="grid md:grid-cols-3 gap-4">
+                <form method="GET" action="find-teacher.php" class="grid md:grid-cols-3 gap-4">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Location</label>
-                        <input type="text" placeholder="City or ZIP code" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                        <input type="text" name="location" value="<?php echo htmlspecialchars($location_filter); ?>" 
+                               placeholder="City or ZIP code" 
+                               class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Specialization</label>
-                        <select class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
-                            <option>Select specialization</option>
-                            <option>Autism</option>
-                            <option>Speech Therapy</option>
-                            <option>Behavioral Support</option>
-                            <option>Math & Logic</option>
-                            <option>Visual Learning</option>
+                        <select name="specialization" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                            <option value="">All Specializations</option>
+                            <?php foreach ($all_specializations as $spec): ?>
+                                <option value="<?php echo htmlspecialchars($spec); ?>" 
+                                        <?php echo $specialization_filter === $spec ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($spec); ?>
+                                </option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Availability</label>
-                        <select class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
-                            <option>Select time</option>
-                            <option>Morning (9 AM - 12 PM)</option>
-                            <option>Afternoon (12 PM - 5 PM)</option>
-                            <option>Evening (5 PM - 8 PM)</option>
+                        <select name="availability" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                            <option value="">All Times</option>
+                            <option value="morning" <?php echo $availability_filter === 'morning' ? 'selected' : ''; ?>>Morning (9 AM - 12 PM)</option>
+                            <option value="afternoon" <?php echo $availability_filter === 'afternoon' ? 'selected' : ''; ?>>Afternoon (12 PM - 5 PM)</option>
+                            <option value="evening" <?php echo $availability_filter === 'evening' ? 'selected' : ''; ?>>Evening (5 PM - 8 PM)</option>
                         </select>
                     </div>
-                </div>
-                <button class="mt-4 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
-                    Search Teachers
-                </button>
+                    <div class="md:col-span-3">
+                        <button type="submit" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                            <i class="fas fa-search mr-2"></i>Search Teachers
+                        </button>
+                        <?php if (!empty($location_filter) || !empty($specialization_filter) || !empty($availability_filter)): ?>
+                            <a href="find-teacher.php" class="ml-3 px-6 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
+                                Clear Filters
+                            </a>
+                        <?php endif; ?>
+                    </div>
+                </form>
             </div>
 
             <!-- Teacher Listings -->
             <div class="grid md:grid-cols-2 gap-6">
-                <!-- Teacher Card 1 -->
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user-tie text-2xl text-purple-600"></i>
-                            </div>
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <h3 class="text-xl font-bold text-gray-800">Ms. Emily Johnson</h3>
-                                    <i class="fas fa-check-circle text-green-500"></i>
+                <?php if (empty($teachers)): ?>
+                    <div class="md:col-span-2 text-center py-12">
+                        <i class="fas fa-user-tie text-6xl text-gray-300 mb-4"></i>
+                        <p class="text-gray-600 text-lg">No teachers found</p>
+                        <p class="text-gray-500 text-sm mt-2">Try adjusting your search filters</p>
+                    </div>
+                <?php else: ?>
+                    <?php foreach ($teachers as $teacher): 
+                        $specs = !empty($teacher['specializations']) ? explode(',', $teacher['specializations']) : [];
+                        $rating = floatval($teacher['rating'] ?? 0);
+                        $total_reviews = intval($teacher['total_reviews'] ?? 0);
+                        $hourly_rate = floatval($teacher['hourly_rate'] ?? 0);
+                        $years_exp = intval($teacher['years_experience'] ?? 0);
+                    ?>
+                        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
+                                        <i class="fas fa-user-tie text-2xl text-purple-600"></i>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center space-x-2">
+                                            <h3 class="text-xl font-bold text-gray-800"><?php echo htmlspecialchars($teacher['full_name']); ?></h3>
+                                            <i class="fas fa-check-circle text-green-500" title="Verified"></i>
+                                        </div>
+                                        <p class="text-yellow-500">
+                                            ★ <?php echo number_format($rating, 1); ?> 
+                                            <?php if ($total_reviews > 0): ?>
+                                                (<?php echo $total_reviews; ?> review<?php echo $total_reviews !== 1 ? 's' : ''; ?>)
+                                            <?php else: ?>
+                                                (No reviews yet)
+                                            <?php endif; ?>
+                                        </p>
+                                    </div>
                                 </div>
-                                <p class="text-yellow-500">★ 4.9 (127 reviews)</p>
+                                <span class="text-lg font-bold text-blue-600">$<?php echo number_format($hourly_rate, 2); ?>/hr</span>
+                            </div>
+                            <p class="text-gray-600 mb-4"><?php echo htmlspecialchars($teacher['bio'] ?? 'Experienced SPED teacher dedicated to helping children learn and grow.'); ?></p>
+                            <div class="space-y-2 mb-4">
+                                <?php if ($years_exp > 0): ?>
+                                    <p class="text-sm text-gray-600">
+                                        <i class="fas fa-user text-gray-400 mr-2"></i>
+                                        <?php echo $years_exp; ?> year<?php echo $years_exp !== 1 ? 's' : ''; ?> experience
+                                    </p>
+                                <?php endif; ?>
+                                <?php if (!empty($teacher['location'])): ?>
+                                    <p class="text-sm text-gray-600">
+                                        <i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>
+                                        <?php echo htmlspecialchars($teacher['location']); ?>
+                                    </p>
+                                <?php endif; ?>
+                            </div>
+                            <?php if (!empty($specs)): ?>
+                                <div class="flex flex-wrap gap-2 mb-4">
+                                    <?php foreach (array_slice($specs, 0, 3) as $spec): ?>
+                                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
+                                            <?php echo htmlspecialchars(trim($spec)); ?>
+                                        </span>
+                                    <?php endforeach; ?>
+                                    <?php if (count($specs) > 3): ?>
+                                        <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-semibold">
+                                            +<?php echo count($specs) - 3; ?> more
+                                        </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
+                            <div class="flex space-x-3">
+                                <a href="book-session.php?teacher_id=<?php echo $teacher['id']; ?>" 
+                                   class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
+                                    Book Session
+                                </a>
+                                <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
+                                    View Profile
+                                </button>
                             </div>
                         </div>
-                        <span class="text-lg font-bold text-blue-600">$45/hr</span>
-                    </div>
-                    <p class="text-gray-600 mb-4">Specialized in autism support with a focus on communication and social skills development.</p>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><i class="fas fa-user text-gray-400 mr-2"></i>8 years experience</p>
-                        <p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>San Francisco, CA</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 mb-4">
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Autism</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Speech Therapy</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Behavioral Support</span>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="book-session.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            Book Session
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            View Profile
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Teacher Card 2 -->
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user-tie text-2xl text-blue-600"></i>
-                            </div>
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <h3 class="text-xl font-bold text-gray-800">Mr. David Chen</h3>
-                                    <i class="fas fa-check-circle text-green-500"></i>
-                                </div>
-                                <p class="text-yellow-500">★ 4.8 (93 reviews)</p>
-                            </div>
-                        </div>
-                        <span class="text-lg font-bold text-blue-600">$40/hr</span>
-                    </div>
-                    <p class="text-gray-600 mb-4">Passionate about making learning accessible through visual and hands-on methods.</p>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><i class="fas fa-user text-gray-400 mr-2"></i>6 years experience</p>
-                        <p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>Los Angeles, CA</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 mb-4">
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Autism</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Math & Logic</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Visual Learning</span>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="book-session.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            Book Session
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            View Profile
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Teacher Card 3 -->
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user-tie text-2xl text-green-600"></i>
-                            </div>
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <h3 class="text-xl font-bold text-gray-800">Dr. Sarah Williams</h3>
-                                    <i class="fas fa-check-circle text-green-500"></i>
-                                </div>
-                                <p class="text-yellow-500">★ 5 (145 reviews)</p>
-                            </div>
-                        </div>
-                        <span class="text-lg font-bold text-blue-600">$55/hr</span>
-                    </div>
-                    <p class="text-gray-600 mb-4">Board-certified specialist in autism education with extensive sensory integration training.</p>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><i class="fas fa-user text-gray-400 mr-2"></i>12 years experience</p>
-                        <p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>San Diego, CA</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 mb-4">
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Autism</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Sensory Integration</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Behavioral Support</span>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="book-session.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            Book Session
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            View Profile
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Teacher Card 4 -->
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-start justify-between mb-4">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user-tie text-2xl text-pink-600"></i>
-                            </div>
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <h3 class="text-xl font-bold text-gray-800">Ms. Jennifer Lopez</h3>
-                                    <i class="fas fa-check-circle text-green-500"></i>
-                                </div>
-                                <p class="text-yellow-500">★ 4.9 (108 reviews)</p>
-                            </div>
-                        </div>
-                        <span class="text-lg font-bold text-blue-600">$42/hr</span>
-                    </div>
-                    <p class="text-gray-600 mb-4">Creating safe, supportive environments for children to thrive academically and socially.</p>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><i class="fas fa-user text-gray-400 mr-2"></i>7 years experience</p>
-                        <p class="text-sm text-gray-600"><i class="fas fa-map-marker-alt text-gray-400 mr-2"></i>Sacramento, CA</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2 mb-4">
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Autism</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Social Skills</span>
-                        <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">Academic Support</span>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="book-session.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            Book Session
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            View Profile
-                        </button>
-                    </div>
-                </div>
+                    <?php endforeach; ?>
+                <?php endif; ?>
             </div>
         </main>
     </div>
-
-    <!-- Floating Help Button -->
-    <div class="fixed bottom-6 right-6 w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-blue-600 transition">
-        <i class="fas fa-question text-white text-xl"></i>
-    </div>
 </body>
 </html>
-
-

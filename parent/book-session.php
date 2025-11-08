@@ -1,3 +1,53 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('parent');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$child = getParentChild($user_id);
+
+// Get teacher ID from query
+$teacher_id = intval($_GET['teacher_id'] ?? 0);
+
+if (empty($teacher_id)) {
+    header('Location: find-teacher.php');
+    exit;
+}
+
+// Get teacher data
+$teacher = getTeacherData($teacher_id);
+
+if (!$teacher) {
+    header('Location: find-teacher.php');
+    exit;
+}
+
+// Get teacher specializations
+$db = getDB();
+$stmt = $db->prepare("SELECT specialization FROM teacher_specializations WHERE teacher_id = ?");
+$stmt->bind_param("i", $teacher_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$specializations = [];
+while ($row = $result->fetch_assoc()) {
+    $specializations[] = $row['specialization'];
+}
+$stmt->close();
+
+// Get child's name or default
+$child_name = $child ? $child['name'] : 'Your Child';
+
+// Default values
+$selected_date = date('Y-m-d', strtotime('+1 day'));
+$selected_time = '';
+$duration = 60; // 1 hour
+$hourly_rate = floatval($teacher['hourly_rate'] ?? 45);
+$total_amount = $hourly_rate;
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +73,16 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Sarah! Let's make today great for Alex</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name']); ?>! Let's make today great for <?php echo htmlspecialchars($child_name); ?></p>
             </div>
             <div class="flex items-center space-x-4">
-                <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                    <span class="text-blue-600 font-bold">SM</span>
+                    <span class="text-blue-600 font-bold"><?php echo strtoupper(substr($user['full_name'], 0, 2)); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Sarah M.</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars(explode(' ', $user['full_name'])[0]); ?></span>
             </div>
         </div>
     </header>
@@ -66,9 +118,9 @@
             </nav>
             <div class="mt-8 p-4 bg-white rounded-lg">
                 <p class="font-semibold text-gray-800 mb-2">Need Help?</p>
-                <button class="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold">
+                <a href="support.php" class="block w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-sm font-semibold text-center">
                     Contact our support
-                </button>
+                </a>
             </div>
             <p class="mt-4 text-xs text-gray-500">Do not sell or share my personal info</p>
         </aside>
@@ -92,13 +144,21 @@
                             </div>
                             <div>
                                 <div class="flex items-center space-x-2">
-                                    <h3 class="text-xl font-bold text-gray-800">Ms. Emily Johnson</h3>
+                                    <h3 class="text-xl font-bold text-gray-800"><?php echo htmlspecialchars($teacher['full_name']); ?></h3>
                                     <i class="fas fa-check-circle text-green-500"></i>
                                 </div>
-                                <p class="text-yellow-500">★ 4.9 (127)</p>
-                                <p class="text-sm text-gray-600 mt-1"><span class="font-semibold">Specialization:</span> Speech</p>
-                                <p class="text-sm text-gray-600"><span class="font-semibold">Experience:</span> 8 years</p>
-                                <p class="text-lg font-bold text-blue-600 mt-2">Hourly Rate: $45/hr</p>
+                                <p class="text-yellow-500">★ <?php echo number_format($teacher['rating'] ?? 4.5, 1); ?> (<?php echo $teacher['total_reviews'] ?? 0; ?>)</p>
+                                <p class="text-sm text-gray-600 mt-1">
+                                    <span class="font-semibold">Specialization:</span> 
+                                    <?php echo htmlspecialchars(implode(', ', $specializations)); ?>
+                                </p>
+                                <p class="text-sm text-gray-600">
+                                    <span class="font-semibold">Experience:</span> 
+                                    <?php echo $teacher['years_experience'] ?? 'N/A'; ?> years
+                                </p>
+                                <p class="text-lg font-bold text-blue-600 mt-2">
+                                    Hourly Rate: $<?php echo number_format($hourly_rate, 2); ?>/hr
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -108,21 +168,25 @@
                         <h2 class="text-lg font-bold text-gray-800 mb-4">Booking Summary</h2>
                         <div class="space-y-3">
                             <div class="flex justify-between">
+                                <span class="text-gray-600">Child:</span>
+                                <span class="font-semibold text-gray-800"><?php echo htmlspecialchars($child_name); ?></span>
+                            </div>
+                            <div class="flex justify-between">
                                 <span class="text-gray-600">Date:</span>
-                                <span class="font-semibold text-gray-800">Nov 8, 2025</span>
+                                <span class="font-semibold text-gray-800" id="summaryDate">Select a date</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Time:</span>
-                                <span class="font-semibold text-gray-800">10:00 AM</span>
+                                <span class="font-semibold text-gray-800" id="summaryTime">Select a time</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-600">Duration:</span>
-                                <span class="font-semibold text-gray-800">1 hour</span>
+                                <span class="font-semibold text-gray-800"><?php echo $duration; ?> minutes</span>
                             </div>
                             <div class="border-t pt-3 mt-3">
                                 <div class="flex justify-between">
                                     <span class="text-lg font-semibold text-gray-800">Total:</span>
-                                    <span class="text-xl font-bold text-blue-600">$45.00</span>
+                                    <span class="text-xl font-bold text-blue-600" id="summaryTotal">$<?php echo number_format($total_amount, 2); ?></span>
                                 </div>
                             </div>
                         </div>
@@ -135,57 +199,21 @@
                     <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                         <h2 class="text-lg font-bold text-gray-800 mb-4">Select Date & Time</h2>
                         
-                        <!-- Calendar Widget -->
+                        <!-- Date Picker -->
                         <div class="mb-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <button class="px-3 py-1 hover:bg-gray-100 rounded"><i class="fas fa-chevron-left"></i></button>
-                                <h3 class="text-lg font-bold text-gray-800">November 2025</h3>
-                                <button class="px-3 py-1 hover:bg-gray-100 rounded"><i class="fas fa-chevron-right"></i></button>
-                            </div>
-                            <div class="grid grid-cols-7 gap-2 mb-2">
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Su</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Mo</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Tu</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">We</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Th</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Fr</div>
-                                <div class="text-center text-sm font-semibold text-gray-600 py-2">Sa</div>
-                            </div>
-                            <div class="grid grid-cols-7 gap-2">
-                                <div class="text-center py-2 text-gray-400 text-sm">27</div>
-                                <div class="text-center py-2 text-gray-400 text-sm">28</div>
-                                <div class="text-center py-2 text-gray-400 text-sm">29</div>
-                                <div class="text-center py-2 text-gray-400 text-sm">30</div>
-                                <div class="text-center py-2 text-gray-400 text-sm">31</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">1</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">2</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">3</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">4</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">5</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">6</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">7</div>
-                                <div class="text-center py-2 bg-blue-500 text-white rounded font-semibold">8</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">9</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">10</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">11</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">12</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">13</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">14</div>
-                                <div class="text-center py-2 text-gray-700 hover:bg-gray-100 rounded cursor-pointer">15</div>
-                            </div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">Select Date</label>
+                            <input type="date" id="sessionDate" name="session_date" 
+                                   min="<?php echo date('Y-m-d', strtotime('+1 day')); ?>" 
+                                   value="<?php echo $selected_date; ?>"
+                                   class="w-full px-4 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none"
+                                   onchange="loadAvailableSlots()">
                         </div>
 
                         <!-- Available Time Slots -->
                         <div>
                             <h3 class="font-semibold text-gray-800 mb-3">Available Time Slots</h3>
-                            <div class="grid grid-cols-4 gap-2">
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">9:00 AM</button>
-                                <button class="px-4 py-2 border-2 border-blue-500 bg-blue-50 rounded-lg font-semibold text-blue-600">10:00 AM</button>
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">11:00 AM</button>
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">1:00 PM</button>
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">2:00 PM</button>
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">3:00 PM</button>
-                                <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold">4:00 PM</button>
+                            <div id="timeSlots" class="grid grid-cols-3 gap-2">
+                                <p class="text-gray-500 text-sm">Select a date to see available slots</p>
                             </div>
                         </div>
                     </div>
@@ -195,16 +223,16 @@
                         <h2 class="text-lg font-bold text-gray-800 mb-4">Payment Method</h2>
                         <p class="text-gray-600 mb-6">Payment will be processed securely through our platform.</p>
                         <div class="space-y-3 mb-6">
-                            <button class="w-full px-6 py-4 border-2 border-blue-500 bg-blue-50 rounded-lg hover:bg-blue-100 transition flex items-center justify-center space-x-3">
+                            <button onclick="selectPaymentMethod('paypal')" id="paypalBtn" class="w-full px-6 py-4 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition flex items-center justify-center space-x-3">
                                 <i class="fab fa-paypal text-2xl text-blue-600"></i>
                                 <span class="font-semibold text-gray-800">PayPal</span>
                             </button>
-                            <button class="w-full px-6 py-4 border-2 border-orange-500 bg-orange-50 rounded-lg hover:bg-orange-100 transition flex items-center justify-center space-x-3">
+                            <button onclick="selectPaymentMethod('gcash')" id="gcashBtn" class="w-full px-6 py-4 border-2 border-gray-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition flex items-center justify-center space-x-3">
                                 <i class="fas fa-mobile-alt text-2xl text-orange-600"></i>
                                 <span class="font-semibold text-gray-800">GCash</span>
                             </button>
                         </div>
-                        <button class="w-full px-6 py-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-lg">
+                        <button onclick="confirmBooking()" class="w-full px-6 py-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-lg">
                             Confirm Booking
                         </button>
                     </div>
@@ -213,11 +241,129 @@
         </main>
     </div>
 
-    <!-- Floating Help Button -->
-    <div class="fixed bottom-6 right-6 w-14 h-14 bg-blue-500 rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-blue-600 transition">
-        <i class="fas fa-question text-white text-xl"></i>
-    </div>
+    <script>
+        const teacherId = <?php echo $teacher_id; ?>;
+        const childId = <?php echo $child ? $child['id'] : 0; ?>;
+        const hourlyRate = <?php echo $hourly_rate; ?>;
+        const duration = <?php echo $duration; ?>;
+        let selectedDate = '';
+        let selectedTime = '';
+        let selectedPaymentMethod = '';
+
+        function selectPaymentMethod(method) {
+            selectedPaymentMethod = method;
+            document.getElementById('paypalBtn').classList.remove('border-blue-500', 'bg-blue-50');
+            document.getElementById('paypalBtn').classList.add('border-gray-200');
+            document.getElementById('gcashBtn').classList.remove('border-orange-500', 'bg-orange-50');
+            document.getElementById('gcashBtn').classList.add('border-gray-200');
+            
+            if (method === 'paypal') {
+                document.getElementById('paypalBtn').classList.add('border-blue-500', 'bg-blue-50');
+            } else {
+                document.getElementById('gcashBtn').classList.add('border-orange-500', 'bg-orange-50');
+            }
+        }
+
+        function loadAvailableSlots() {
+            const date = document.getElementById('sessionDate').value;
+            if (!date) return;
+
+            selectedDate = date;
+            document.getElementById('summaryDate').textContent = new Date(date).toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+
+            fetch(`../api/get_available_slots.php?teacher_id=${teacherId}&date=${date}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        const slotsDiv = document.getElementById('timeSlots');
+                        if (data.slots.length === 0) {
+                            slotsDiv.innerHTML = '<p class="text-gray-500 text-sm col-span-3">No available slots for this date</p>';
+                            return;
+                        }
+                        slotsDiv.innerHTML = data.slots.map(slot => `
+                            <button onclick="selectTimeSlot('${slot.time_24}', '${slot.display}')" 
+                                    class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition font-semibold time-slot-btn">
+                                ${slot.display}
+                            </button>
+                        `).join('');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('timeSlots').innerHTML = '<p class="text-red-500 text-sm col-span-3">Error loading slots</p>';
+                });
+        }
+
+        function selectTimeSlot(time, display) {
+            selectedTime = time;
+            document.getElementById('summaryTime').textContent = display;
+            
+            // Update button styles
+            document.querySelectorAll('.time-slot-btn').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-600');
+                btn.classList.add('border-gray-200');
+            });
+            event.target.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-600');
+            event.target.classList.remove('border-gray-200');
+        }
+
+        function confirmBooking() {
+            if (!selectedDate || !selectedTime) {
+                alert('Please select a date and time');
+                return;
+            }
+
+            if (!selectedPaymentMethod) {
+                alert('Please select a payment method');
+                return;
+            }
+
+            if (!childId) {
+                alert('Please add a child profile first');
+                window.location.href = 'child-profile.php';
+                return;
+            }
+
+            if (!confirm('Confirm booking for ' + document.getElementById('summaryDate').textContent + ' at ' + document.getElementById('summaryTime').textContent + '?')) {
+                return;
+            }
+
+            fetch('../api/book_session.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    teacher_id: teacherId,
+                    child_id: childId,
+                    session_date: selectedDate,
+                    session_time: selectedTime,
+                    duration_minutes: duration,
+                    amount: hourlyRate,
+                    payment_method: selectedPaymentMethod
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Session booked successfully!');
+                    window.location.href = 'schedule.php';
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                alert('An error occurred. Please try again.');
+            });
+        }
+
+        // Load slots on page load
+        window.onload = function() {
+            loadAvailableSlots();
+        };
+    </script>
 </body>
 </html>
-
-

@@ -1,0 +1,12 @@
+# Protect config files from direct access
+<FilesMatch "^(config\.php|api_keys\.php|database\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect entire config directory (optional - uncomment if needed)
+# <Directory "config">
+#     Order allow,deny
+#     Deny from all
+# </Directory>
+
