@@ -65,9 +65,10 @@ function getRecentTeacherApplications($limit = 10) {
 function getPlatformActivity($limit = 10) {
     $db = getDB();
     $stmt = $db->prepare("
-        SELECT action, description, created_at, user_id
-        FROM system_logs
-        ORDER BY created_at DESC
+        SELECT sl.action, sl.description, sl.created_at, sl.user_id, u.full_name, u.email
+        FROM system_logs sl
+        LEFT JOIN users u ON sl.user_id = u.id
+        ORDER BY sl.created_at DESC
         LIMIT ?
     ");
     $stmt->bind_param("i", $limit);

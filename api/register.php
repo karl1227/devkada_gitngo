@@ -12,13 +12,30 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // Check if data is JSON or FormData
 $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+$data = [];
+
 if (strpos($contentType, 'application/json') !== false) {
-    $data = json_decode(file_get_contents('php://input'), true);
+    // JSON data
+    $json_input = file_get_contents('php://input');
+    $data = json_decode($json_input, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        echo json_encode(['success' => false, 'message' => 'Invalid JSON data']);
+        exit;
+    }
 } else {
+    // FormData - PHP automatically parses arrays from FormData
     $data = $_POST;
+    
+    // Debug: Log received data (remove in production)
+    // error_log("FormData received: " . print_r($data, true));
 }
 
 $type = sanitize($data['type'] ?? '');
+
+if (empty($type)) {
+    echo json_encode(['success' => false, 'message' => 'Registration type is required']);
+    exit;
+}
 
 if ($type === 'parent') {
     $full_name = sanitize($data['full_name'] ?? '');
@@ -43,19 +60,52 @@ if ($type === 'parent') {
         exit;
     }
     
-    $result = registerParent($full_name, $email, $password, $child_name, $child_age);
-    echo json_encode($result);
+    try {
+        $result = registerParent($full_name, $email, $password, $child_name, $child_age);
+        echo json_encode($result);
+    } catch (Exception $e) {
+        error_log("Parent registration error: " . $e->getMessage());
+        echo json_encode(['success' => false, 'message' => 'Registration failed: ' . $e->getMessage()]);
+    }
     
 } elseif ($type === 'teacher') {
     $full_name = sanitize($data['full_name'] ?? '');
     $email = sanitize($data['email'] ?? '');
     $password = $data['password'] ?? '';
     $confirm_password = $data['confirm_password'] ?? '';
-    $specialization = sanitize($data['specialization'] ?? '');
     $location = sanitize($data['location'] ?? '');
     
-    if (empty($full_name) || empty($email) || empty($password) || empty($specialization) || empty($location)) {
+    // Get specializations (can be array from checkboxes)
+    // When FormData.append('specializations[]', value) is used, PHP parses it as $_POST['specializations'] array
+    $specializations = [];
+    
+    // Check for specializations array (most common case)
+    if (isset($data['specializations']) && is_array($data['specializations'])) {
+        $specializations = array_map('sanitize', $data['specializations']);
+    } elseif (isset($data['specializations']) && !empty($data['specializations'])) {
+        // Single value case
+        $specializations = [sanitize($data['specializations'])];
+    }
+    
+    // Also check for specializations[] format (some PHP configurations use this)
+    if (empty($specializations) && isset($data['specializations[]'])) {
+        if (is_array($data['specializations[]'])) {
+            $specializations = array_map('sanitize', $data['specializations[]']);
+        } else {
+            $specializations = [sanitize($data['specializations[]'])];
+        }
+    }
+    
+    // Debug: Log received specializations (remove in production)
+    // error_log("Received specializations: " . print_r($specializations, true));
+    
+    if (empty($full_name) || empty($email) || empty($password) || empty($location)) {
         echo json_encode(['success' => false, 'message' => 'All fields are required']);
+        exit;
+    }
+    
+    if (empty($specializations)) {
+        echo json_encode(['success' => false, 'message' => 'Please select at least one specialization']);
         exit;
     }
     
@@ -90,7 +140,10 @@ if ($type === 'parent') {
         }
     }
     
-    $result = registerTeacher($full_name, $email, $password, $specialization, $location, $license_file);
+    // Use first specialization as primary (for backward compatibility)
+    $primary_specialization = $specializations[0];
+    
+    $result = registerTeacher($full_name, $email, $password, $primary_specialization, $location, $license_file, $specializations);
     echo json_encode($result);
 } else {
     echo json_encode(['success' => false, 'message' => 'Invalid registration type']);

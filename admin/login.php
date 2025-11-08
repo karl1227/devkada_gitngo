@@ -17,13 +17,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($password)) {
         $error = 'All fields are required';
     } else {
-        $result = login($email, $password, 'admin');
+        // Check if admin user exists
+        $db = getDB();
+        $checkStmt = $db->prepare("SELECT id, email, password, status FROM users WHERE email = ? AND role = 'admin'");
+        $checkStmt->bind_param("s", $email);
+        $checkStmt->execute();
+        $checkResult = $checkStmt->get_result();
         
-        if ($result['success']) {
-            redirect(BASE_URL . 'admin/dashboard.php');
+        if ($checkResult->num_rows === 0) {
+            $error = 'Admin user not found. Please run admin/reset_password.php to create/reset admin account.';
         } else {
-            $error = $result['message'];
+            $result = login($email, $password, 'admin');
+            
+            if ($result['success']) {
+                redirect(BASE_URL . 'admin/dashboard.php');
+            } else {
+                $error = $result['message'];
+            }
         }
+        $checkStmt->close();
     }
 }
 ?>

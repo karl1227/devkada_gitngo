@@ -366,3 +366,119 @@ function getTeacherStudents($teacher_id) {
     return $students;
 }
 
+// Get teacher ID from user ID
+function getTeacherIdByUserId($user_id) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT id FROM teachers WHERE user_id = ?");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $teacher = $result->fetch_assoc();
+    $stmt->close();
+    return $teacher ? $teacher['id'] : null;
+}
+
+// Get teacher data by user ID
+function getTeacherByUserId($user_id) {
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT t.*, u.full_name, u.email, u.status as user_status
+        FROM teachers t
+        JOIN users u ON t.user_id = u.id
+        WHERE t.user_id = ?
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $teacher = $result->fetch_assoc();
+    $stmt->close();
+    return $teacher;
+}
+
+// Get recent student progress for teacher
+function getTeacherRecentStudentProgress($teacher_id, $limit = 5) {
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT DISTINCT c.*, u.full_name as parent_name,
+               (SELECT COUNT(*) FROM sessions WHERE child_id = c.id AND teacher_id = ? AND status = 'completed') as completed_sessions,
+               (SELECT COUNT(*) FROM progress_reports WHERE child_id = c.id AND teacher_id = ?) as progress_reports_count,
+               (SELECT MAX(created_at) FROM progress_reports WHERE child_id = c.id AND teacher_id = ?) as last_report_date
+        FROM children c
+        JOIN sessions s ON c.id = s.child_id
+        JOIN users u ON c.parent_id = u.id
+        WHERE s.teacher_id = ? AND s.status IN ('pending', 'confirmed', 'completed')
+        ORDER BY last_report_date DESC, completed_sessions DESC
+        LIMIT ?
+    ");
+    $stmt->bind_param("iiiii", $teacher_id, $teacher_id, $teacher_id, $teacher_id, $limit);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $students = [];
+    while ($row = $result->fetch_assoc()) {
+        $students[] = $row;
+    }
+    $stmt->close();
+    return $students;
+}
+
+// Get teacher specializations
+function getTeacherSpecializations($teacher_id) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT specialization FROM teacher_specializations WHERE teacher_id = ? ORDER BY specialization ASC");
+    $stmt->bind_param("i", $teacher_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $specializations = [];
+    while ($row = $result->fetch_assoc()) {
+        $specializations[] = $row['specialization'];
+    }
+    $stmt->close();
+    return $specializations;
+}
+
+// Get progress reports for a teacher
+function getTeacherProgressReports($teacher_id, $limit = 10) {
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT pr.*, c.name as child_name, s.session_date, s.session_time
+        FROM progress_reports pr
+        JOIN children c ON pr.child_id = c.id
+        JOIN sessions s ON pr.session_id = s.id
+        WHERE pr.teacher_id = ?
+        ORDER BY pr.report_date DESC, pr.created_at DESC
+        LIMIT ?
+    ");
+    $stmt->bind_param("ii", $teacher_id, $limit);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $reports = [];
+    while ($row = $result->fetch_assoc()) {
+        $reports[] = $row;
+    }
+    $stmt->close();
+    return $reports;
+}
+
+// Get AI insights for a teacher (aggregated from all students)
+function getTeacherAIInsights($teacher_id, $limit = 10) {
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT ai.*, c.name as child_name
+        FROM ai_insights ai
+        JOIN children c ON ai.child_id = c.id
+        JOIN sessions s ON c.id = s.child_id
+        WHERE s.teacher_id = ?
+        ORDER BY ai.created_at DESC
+        LIMIT ?
+    ");
+    $stmt->bind_param("ii", $teacher_id, $limit);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $insights = [];
+    while ($row = $result->fetch_assoc()) {
+        $insights[] = $row;
+    }
+    $stmt->close();
+    return $insights;
+}
+

@@ -1,3 +1,48 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('teacher');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$teacher = getTeacherByUserId($user_id);
+$teacher_id = $teacher ? $teacher['id'] : null;
+
+// Get students
+$students = $teacher_id ? getTeacherStudents($teacher_id) : [];
+
+// Get user initials for avatar
+$initials = '';
+if ($user && $user['full_name']) {
+    $name_parts = explode(' ', $user['full_name']);
+    $initials = strtoupper(substr($name_parts[0], 0, 1) . (isset($name_parts[1]) ? substr($name_parts[1], 0, 1) : ''));
+}
+
+// Get stats for each student
+$db = getDB();
+foreach ($students as &$student) {
+    // Get completed sessions count
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM sessions WHERE child_id = ? AND teacher_id = ? AND status = 'completed'");
+    $stmt->bind_param("ii", $student['id'], $teacher_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $session_data = $result->fetch_assoc();
+    $student['completed_sessions'] = $session_data['count'] ?? 0;
+    $stmt->close();
+    
+    // Get progress reports count
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM progress_reports WHERE child_id = ? AND teacher_id = ?");
+    $stmt->bind_param("ii", $student['id'], $teacher_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $report_data = $result->fetch_assoc();
+    $student['progress_reports'] = $report_data['count'] ?? 0;
+    $stmt->close();
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +68,17 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Emily!</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?>!</p>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span class="text-purple-600 font-bold">EJ</span>
+                    <span class="text-purple-600 font-bold"><?php echo htmlspecialchars($initials); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Emily Johnson</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?></span>
             </div>
         </div>
     </header>
@@ -78,60 +126,50 @@
             </div>
 
             <!-- Student Cards -->
-            <div class="grid md:grid-cols-2 gap-6">
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-center space-x-4 mb-4">
-                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                            <span class="text-blue-600 font-bold text-xl">AM</span>
-                        </div>
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-800">Alex Martinez</h3>
-                            <p class="text-gray-600">Age 7 • Visual Learner</p>
-                        </div>
-                    </div>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Parent:</span> Sarah Martinez</p>
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Sessions:</span> 28 completed</p>
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Progress:</span> +12% this month</p>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="reports.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            View Progress
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            Message
-                        </button>
-                    </div>
+            <?php if (empty($students)): ?>
+                <div class="bg-white rounded-xl shadow-sm p-12 border border-gray-100 text-center">
+                    <i class="fas fa-user-graduate text-6xl text-gray-300 mb-4"></i>
+                    <p class="text-gray-600 text-lg mb-2">No students assigned yet</p>
+                    <p class="text-gray-500">Students will appear here once they book sessions with you.</p>
                 </div>
-
-                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                    <div class="flex items-center space-x-4 mb-4">
-                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
-                            <span class="text-green-600 font-bold text-xl">SM</span>
+            <?php else: ?>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <?php 
+                    $colors = ['blue', 'green', 'purple', 'orange', 'pink', 'indigo', 'teal'];
+                    foreach ($students as $index => $student): 
+                        $student_initials = '';
+                        $student_name_parts = explode(' ', $student['name']);
+                        $student_initials = strtoupper(substr($student_name_parts[0], 0, 1) . (isset($student_name_parts[1]) ? substr($student_name_parts[1], 0, 1) : ''));
+                        $color = $colors[$index % count($colors)];
+                    ?>
+                        <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                            <div class="flex items-center space-x-4 mb-4">
+                                <div class="w-16 h-16 bg-<?php echo $color; ?>-100 rounded-full flex items-center justify-center">
+                                    <span class="text-<?php echo $color; ?>-600 font-bold text-xl"><?php echo htmlspecialchars($student_initials); ?></span>
+                                </div>
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800"><?php echo htmlspecialchars($student['name']); ?></h3>
+                                    <p class="text-gray-600">Age <?php echo htmlspecialchars($student['age']); ?> <?php echo $student['learning_style'] ? '• ' . htmlspecialchars($student['learning_style']) : ''; ?></p>
+                                </div>
+                            </div>
+                            <div class="space-y-2 mb-4">
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Parent:</span> <?php echo htmlspecialchars($student['parent_name']); ?></p>
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Sessions:</span> <?php echo number_format($student['completed_sessions']); ?> completed</p>
+                                <p class="text-sm text-gray-600"><span class="font-semibold">Progress Reports:</span> <?php echo number_format($student['progress_reports']); ?></p>
+                            </div>
+                            <div class="flex space-x-3">
+                                <a href="reports.php?child_id=<?php echo $student['id']; ?>" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
+                                    View Progress
+                                </a>
+                                <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
+                                    Message
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <h3 class="text-xl font-bold text-gray-800">Sarah Miller</h3>
-                            <p class="text-gray-600">Age 8 • Kinesthetic Learner</p>
-                        </div>
-                    </div>
-                    <div class="space-y-2 mb-4">
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Parent:</span> John Miller</p>
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Sessions:</span> 22 completed</p>
-                        <p class="text-sm text-gray-600"><span class="font-semibold">Progress:</span> +8% this month</p>
-                    </div>
-                    <div class="flex space-x-3">
-                        <a href="reports.php" class="flex-1 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold text-center">
-                            View Progress
-                        </a>
-                        <button class="flex-1 px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            Message
-                        </button>
-                    </div>
+                    <?php endforeach; ?>
                 </div>
-            </div>
+            <?php endif; ?>
         </main>
     </div>
 </body>
 </html>
-
-

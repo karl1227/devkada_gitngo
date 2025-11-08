@@ -1,3 +1,29 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('teacher');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$teacher = getTeacherByUserId($user_id);
+$teacher_id = $teacher ? $teacher['id'] : null;
+
+// Get students for dropdown
+$students = $teacher_id ? getTeacherStudents($teacher_id) : [];
+
+// Get recent progress reports
+$reports = $teacher_id ? getTeacherProgressReports($teacher_id, 10) : [];
+
+// Get user initials for avatar
+$initials = '';
+if ($user && $user['full_name']) {
+    $name_parts = explode(' ', $user['full_name']);
+    $initials = strtoupper(substr($name_parts[0], 0, 1) . (isset($name_parts[1]) ? substr($name_parts[1], 0, 1) : ''));
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +49,17 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Emily!</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?>!</p>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span class="text-purple-600 font-bold">EJ</span>
+                    <span class="text-purple-600 font-bold"><?php echo htmlspecialchars($initials); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Emily Johnson</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?></span>
             </div>
         </div>
     </header>
@@ -80,31 +109,37 @@
             <!-- Select Student -->
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6">
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Select Student</label>
-                <select class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
-                    <option>Alex Martinez</option>
-                    <option>Sarah Miller</option>
+                <select id="studentSelect" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                    <option value="">-- Select a student --</option>
+                    <?php foreach ($students as $student): ?>
+                        <option value="<?php echo $student['id']; ?>"><?php echo htmlspecialchars($student['name']); ?></option>
+                    <?php endforeach; ?>
                 </select>
             </div>
 
             <!-- Report Form -->
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6">
                 <h2 class="text-xl font-bold text-gray-800 mb-6">Create Progress Report</h2>
-                <form class="space-y-6">
+                <form id="reportForm" class="space-y-6">
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Session Date</label>
-                        <input type="date" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                        <input type="date" id="sessionDate" name="session_date" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Subject</label>
+                        <input type="text" id="subject" name="subject" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" placeholder="e.g., Communication, Social Skills, Math">
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Progress Notes</label>
-                        <textarea class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="5" placeholder="Describe the student's progress, achievements, and areas for improvement..."></textarea>
+                        <textarea id="progressNotes" name="progress_notes" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="5" placeholder="Describe the student's progress, achievements, and areas for improvement..."></textarea>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Skills Practiced</label>
-                        <input type="text" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" placeholder="e.g., Communication, Social Skills, Math">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Goals Achieved</label>
+                        <textarea id="goalsAchieved" name="goals_achieved" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="3" placeholder="Goals that were achieved in this session..."></textarea>
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Next Steps</label>
-                        <textarea class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="3" placeholder="Recommendations for next session..."></textarea>
+                        <textarea id="nextGoals" name="next_goals" class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none" rows="3" placeholder="Recommendations for next session..."></textarea>
                     </div>
                     <button type="submit" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
                         Submit Report
@@ -116,31 +151,28 @@
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                 <h2 class="text-xl font-bold text-gray-800 mb-6">Recent Reports</h2>
                 <div class="space-y-4">
-                    <div class="p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <h3 class="font-bold text-gray-800">Alex Martinez - Session Report</h3>
-                                <p class="text-sm text-gray-600">November 5, 2025</p>
+                    <?php if (!empty($reports)): ?>
+                        <?php foreach ($reports as $report): ?>
+                            <div class="p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
+                                <div class="flex justify-between items-start mb-2">
+                                    <div>
+                                        <h3 class="font-bold text-gray-800"><?php echo htmlspecialchars($report['child_name']); ?> - <?php echo htmlspecialchars($report['subject']); ?></h3>
+                                        <p class="text-sm text-gray-600"><?php echo formatDate($report['report_date']); ?></p>
+                                    </div>
+                                    <button class="text-blue-600 hover:underline font-semibold">View</button>
+                                </div>
+                                <p class="text-sm text-gray-700"><?php echo htmlspecialchars(substr($report['progress_notes'], 0, 150)); ?><?php echo strlen($report['progress_notes']) > 150 ? '...' : ''; ?></p>
                             </div>
-                            <button class="text-blue-600 hover:underline font-semibold">View</button>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-file-alt text-4xl mb-4"></i>
+                            <p>No reports yet. Create your first progress report above.</p>
                         </div>
-                        <p class="text-sm text-gray-700">Great progress in communication skills. Alex showed improved focus during visual learning activities.</p>
-                    </div>
-                    <div class="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <h3 class="font-bold text-gray-800">Sarah Miller - Session Report</h3>
-                                <p class="text-sm text-gray-600">November 4, 2025</p>
-                            </div>
-                            <button class="text-blue-600 hover:underline font-semibold">View</button>
-                        </div>
-                        <p class="text-sm text-gray-700">Excellent engagement in social interaction exercises. Recommended to continue with sensory breaks.</p>
-                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>
     </div>
 </body>
 </html>
-
-

@@ -179,15 +179,30 @@
                         </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Specialization</label>
-                        <select id="specialization" name="specialization" required class="w-full px-4 py-3 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
-                            <option value="">Select specialization</option>
-                            <option value="Autism">Autism</option>
-                            <option value="Speech Therapy">Speech Therapy</option>
-                            <option value="Behavioral Support">Behavioral Support</option>
-                            <option value="Math & Logic">Math & Logic</option>
-                            <option value="Visual Learning">Visual Learning</option>
-                        </select>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">Specialization (Select all that apply)</label>
+                        <div class="grid grid-cols-2 gap-3 p-4 border-2 border-gray-200 rounded-lg">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="specializations[]" value="Autism" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <span class="text-gray-700">Autism</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="specializations[]" value="Speech Therapy" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <span class="text-gray-700">Speech Therapy</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="specializations[]" value="Behavioral Support" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <span class="text-gray-700">Behavioral Support</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="specializations[]" value="Math & Logic" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <span class="text-gray-700">Math & Logic</span>
+                            </label>
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" name="specializations[]" value="Visual Learning" class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                <span class="text-gray-700">Visual Learning</span>
+                            </label>
+                        </div>
+                        <p id="specializationError" class="hidden text-red-600 text-sm mt-2">Please select at least one specialization</p>
                     </div>
                     <div>
                         <label class="block text-sm font-semibold text-gray-700 mb-2">Location</label>
@@ -286,7 +301,12 @@
                 },
                 body: JSON.stringify(formData)
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     successDiv.textContent = data.message || 'Account created successfully! Redirecting...';
@@ -302,7 +322,8 @@
                 }
             })
             .catch(error => {
-                errorDiv.textContent = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+                errorDiv.textContent = 'An error occurred. Please try again. Error: ' + error.message;
                 errorDiv.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Create Account';
@@ -314,8 +335,18 @@
             
             const errorDiv = document.getElementById('teacherError');
             const successDiv = document.getElementById('teacherSuccess');
+            const specError = document.getElementById('specializationError');
             errorDiv.classList.add('hidden');
             successDiv.classList.add('hidden');
+            specError.classList.add('hidden');
+            
+            // Get selected specializations
+            const specializations = Array.from(document.querySelectorAll('input[name="specializations[]"]:checked')).map(cb => cb.value);
+            
+            if (specializations.length === 0) {
+                specError.classList.remove('hidden');
+                return;
+            }
             
             const formData = new FormData();
             formData.append('type', 'teacher');
@@ -323,8 +354,12 @@
             formData.append('email', document.getElementById('teacher_email').value);
             formData.append('password', document.getElementById('teacher_password').value);
             formData.append('confirm_password', document.getElementById('teacher_confirm_password').value);
-            formData.append('specialization', document.getElementById('specialization').value);
             formData.append('location', document.getElementById('location').value);
+            
+            // Append each specialization
+            specializations.forEach(spec => {
+                formData.append('specializations[]', spec);
+            });
             
             const licenseFile = document.getElementById('licenseUpload').files[0];
             if (licenseFile) {
@@ -339,7 +374,12 @@
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     successDiv.textContent = data.message || 'Application submitted successfully!';
@@ -355,7 +395,8 @@
                 }
             })
             .catch(error => {
-                errorDiv.textContent = 'An error occurred. Please try again.';
+                console.error('Error:', error);
+                errorDiv.textContent = 'An error occurred. Please try again. Error: ' + error.message;
                 errorDiv.classList.remove('hidden');
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Submit Application';

@@ -1,3 +1,38 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('teacher');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$teacher = getTeacherByUserId($user_id);
+$teacher_id = $teacher ? $teacher['id'] : null;
+
+// Get dashboard stats
+$stats = $teacher_id ? getTeacherDashboardStats($teacher_id) : [
+    'active_students' => 0,
+    'sessions_this_month' => 0,
+    'rating' => 0.00,
+    'total_reviews' => 0,
+    'earnings' => 0.00
+];
+
+// Get upcoming sessions
+$sessions = $teacher_id ? getTeacherUpcomingSessions($teacher_id, 5) : [];
+
+// Get recent student progress
+$recent_students = $teacher_id ? getTeacherRecentStudentProgress($teacher_id, 5) : [];
+
+// Get user initials for avatar
+$initials = '';
+if ($user && $user['full_name']) {
+    $name_parts = explode(' ', $user['full_name']);
+    $initials = strtoupper(substr($name_parts[0], 0, 1) . (isset($name_parts[1]) ? substr($name_parts[1], 0, 1) : ''));
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +58,17 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Emily! Ready to make a difference today?</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?>! Ready to make a difference today?</p>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span class="text-purple-600 font-bold">EJ</span>
+                    <span class="text-purple-600 font-bold"><?php echo htmlspecialchars($initials); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Emily Johnson</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?></span>
             </div>
         </div>
     </header>
@@ -91,7 +129,7 @@
                             <i class="fas fa-users text-blue-600 text-xl"></i>
                         </div>
                     </div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-1">12</h3>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-1"><?php echo number_format($stats['active_students']); ?></h3>
                     <p class="text-gray-600 text-sm">Active Students</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -100,7 +138,7 @@
                             <i class="fas fa-calendar-check text-green-600 text-xl"></i>
                         </div>
                     </div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-1">28</h3>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-1"><?php echo number_format($stats['sessions_this_month']); ?></h3>
                     <p class="text-gray-600 text-sm">Sessions This Month</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
@@ -109,8 +147,8 @@
                             <i class="fas fa-star text-yellow-600 text-xl"></i>
                         </div>
                     </div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-1">4.9</h3>
-                    <p class="text-gray-600 text-sm">Average Rating</p>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-1"><?php echo number_format($stats['rating'], 1); ?></h3>
+                    <p class="text-gray-600 text-sm">Average Rating (<?php echo number_format($stats['total_reviews']); ?> reviews)</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                     <div class="flex items-center justify-between mb-4">
@@ -118,7 +156,7 @@
                             <i class="fas fa-dollar-sign text-purple-600 text-xl"></i>
                         </div>
                     </div>
-                    <h3 class="text-2xl font-bold text-gray-800 mb-1">$1,260</h3>
+                    <h3 class="text-2xl font-bold text-gray-800 mb-1">$<?php echo number_format($stats['earnings'], 2); ?></h3>
                     <p class="text-gray-600 text-sm">This Month's Earnings</p>
                 </div>
             </div>
@@ -130,36 +168,50 @@
                     <a href="availability.php" class="text-blue-600 hover:underline font-semibold">View All</a>
                 </div>
                 <div class="space-y-4">
-                    <div class="flex items-center justify-between p-4 bg-blue-50 rounded-lg border-l-4 border-blue-500">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user text-white"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-gray-800">Alex Martinez</h3>
-                                <p class="text-sm text-gray-600">Speech Therapy</p>
-                                <p class="text-sm text-gray-500">Today, 10:00 AM - 11:00 AM</p>
-                            </div>
+                    <?php if (empty($sessions)): ?>
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-calendar-times text-4xl mb-4"></i>
+                            <p>No upcoming sessions scheduled</p>
                         </div>
-                        <button class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
-                            Start Session
-                        </button>
-                    </div>
-                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg border-l-4 border-gray-300">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-12 h-12 bg-gray-400 rounded-full flex items-center justify-center">
-                                <i class="fas fa-user text-white"></i>
+                    <?php else: ?>
+                        <?php foreach ($sessions as $session): 
+                            $session_date = new DateTime($session['session_date']);
+                            $session_time = new DateTime($session['session_time']);
+                            $end_time = clone $session_time;
+                            $end_time->modify('+' . $session['duration_minutes'] . ' minutes');
+                            
+                            $is_today = $session_date->format('Y-m-d') === date('Y-m-d');
+                            $is_tomorrow = $session_date->format('Y-m-d') === date('Y-m-d', strtotime('+1 day'));
+                            
+                            $date_label = $is_today ? 'Today' : ($is_tomorrow ? 'Tomorrow' : $session_date->format('M d, Y'));
+                            
+                            $child_initials = '';
+                            $child_name_parts = explode(' ', $session['child_name']);
+                            $child_initials = strtoupper(substr($child_name_parts[0], 0, 1) . (isset($child_name_parts[1]) ? substr($child_name_parts[1], 0, 1) : ''));
+                        ?>
+                            <div class="flex items-center justify-between p-4 <?php echo $is_today ? 'bg-blue-50 border-l-4 border-blue-500' : 'bg-gray-50 border-l-4 border-gray-300'; ?> rounded-lg">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 <?php echo $is_today ? 'bg-blue-500' : 'bg-gray-400'; ?> rounded-full flex items-center justify-center">
+                                        <span class="text-white font-bold text-sm"><?php echo htmlspecialchars($child_initials); ?></span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-gray-800"><?php echo htmlspecialchars($session['child_name']); ?></h3>
+                                        <p class="text-sm text-gray-600">Parent: <?php echo htmlspecialchars($session['parent_name']); ?></p>
+                                        <p class="text-sm text-gray-500"><?php echo htmlspecialchars($date_label); ?>, <?php echo $session_time->format('g:i A'); ?> - <?php echo $end_time->format('g:i A'); ?></p>
+                                    </div>
+                                </div>
+                                <?php if ($is_today && $session['status'] === 'confirmed'): ?>
+                                    <button class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                                        Start Session
+                                    </button>
+                                <?php else: ?>
+                                    <button class="px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
+                                        View Details
+                                    </button>
+                                <?php endif; ?>
                             </div>
-                            <div>
-                                <h3 class="font-bold text-gray-800">Alex Martinez</h3>
-                                <p class="text-sm text-gray-600">Math Fundamentals</p>
-                                <p class="text-sm text-gray-500">Tomorrow, 9:30 AM - 10:15 AM</p>
-                            </div>
-                        </div>
-                        <button class="px-4 py-2 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition font-semibold">
-                            View Details
-                        </button>
-                    </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -167,30 +219,40 @@
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
                 <h2 class="text-xl font-bold text-gray-800 mb-6">Recent Student Progress</h2>
                 <div class="space-y-4">
-                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                                <span class="text-blue-600 font-bold">AM</span>
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-gray-800">Alex Martinez</h3>
-                                <p class="text-sm text-gray-600">Communication Skills: +12% this month</p>
-                            </div>
+                    <?php if (empty($recent_students)): ?>
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-user-graduate text-4xl mb-4"></i>
+                            <p>No student progress data available yet</p>
                         </div>
-                        <a href="reports.php" class="text-blue-600 hover:underline font-semibold">View Report</a>
-                    </div>
-                    <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                        <div class="flex items-center space-x-4">
-                            <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                                <span class="text-green-600 font-bold">SM</span>
+                    <?php else: ?>
+                        <?php 
+                        $colors = ['blue', 'green', 'purple', 'orange', 'pink'];
+                        foreach ($recent_students as $index => $student): 
+                            $student_initials = '';
+                            $student_name_parts = explode(' ', $student['name']);
+                            $student_initials = strtoupper(substr($student_name_parts[0], 0, 1) . (isset($student_name_parts[1]) ? substr($student_name_parts[1], 0, 1) : ''));
+                            
+                            $color = $colors[$index % count($colors)];
+                            $completed_sessions = $student['completed_sessions'] ?? 0;
+                            $progress_reports = $student['progress_reports_count'] ?? 0;
+                        ?>
+                            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                                <div class="flex items-center space-x-4">
+                                    <div class="w-12 h-12 bg-<?php echo $color; ?>-100 rounded-full flex items-center justify-center">
+                                        <span class="text-<?php echo $color; ?>-600 font-bold"><?php echo htmlspecialchars($student_initials); ?></span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-gray-800"><?php echo htmlspecialchars($student['name']); ?></h3>
+                                        <p class="text-sm text-gray-600">Completed Sessions: <?php echo number_format($completed_sessions); ?> | Progress Reports: <?php echo number_format($progress_reports); ?></p>
+                                        <?php if ($student['last_report_date']): ?>
+                                            <p class="text-sm text-gray-500">Last Report: <?php echo formatDate($student['last_report_date']); ?></p>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                                <a href="reports.php?child_id=<?php echo $student['id']; ?>" class="text-blue-600 hover:underline font-semibold">View Report</a>
                             </div>
-                            <div>
-                                <h3 class="font-bold text-gray-800">Sarah Miller</h3>
-                                <p class="text-sm text-gray-600">Social Interaction: +8% this month</p>
-                            </div>
-                        </div>
-                        <a href="reports.php" class="text-blue-600 hover:underline font-semibold">View Report</a>
-                    </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
                 </div>
             </div>
         </main>

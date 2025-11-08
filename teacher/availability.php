@@ -1,3 +1,36 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('teacher');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$teacher = getTeacherByUserId($user_id);
+$teacher_id = $teacher ? $teacher['id'] : null;
+
+// Get availability
+$availability = $teacher_id ? getTeacherAvailability($teacher_id) : [];
+
+// Get user initials for avatar
+$initials = '';
+if ($user && $user['full_name']) {
+    $name_parts = explode(' ', $user['full_name']);
+    $initials = strtoupper(substr($name_parts[0], 0, 1) . (isset($name_parts[1]) ? substr($name_parts[1], 0, 1) : ''));
+}
+
+// Organize availability by day
+$availability_by_day = [];
+$days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+foreach ($days as $day) {
+    $availability_by_day[$day] = [];
+}
+foreach ($availability as $slot) {
+    $availability_by_day[$slot['day_of_week']][] = $slot;
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +56,17 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Emily!</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?>!</p>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span class="text-purple-600 font-bold">EJ</span>
+                    <span class="text-purple-600 font-bold"><?php echo htmlspecialchars($initials); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Emily Johnson</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?></span>
             </div>
         </div>
     </header>
@@ -77,54 +113,58 @@
                 <p class="text-gray-600">Set your available times for sessions.</p>
             </div>
 
-            <!-- Calendar -->
+            <!-- Availability by Day -->
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6">
-                <div class="flex items-center justify-between mb-6">
-                    <h2 class="text-xl font-bold text-gray-800">November 2025</h2>
-                    <div class="flex space-x-2">
-                        <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                            <i class="fas fa-chevron-left"></i>
-                        </button>
-                        <button class="px-4 py-2 border-2 border-gray-200 rounded-lg hover:bg-gray-50 transition">
-                            <i class="fas fa-chevron-right"></i>
+                <h2 class="text-xl font-bold text-gray-800 mb-6">Weekly Availability</h2>
+                <form id="availabilityForm" method="POST" action="../api/teacher_update_availability.php">
+                    <div class="space-y-6">
+                        <?php foreach ($days as $day): 
+                            $day_slots = $availability_by_day[$day] ?? [];
+                            $day_label = ucfirst($day);
+                        ?>
+                            <div class="border-b border-gray-200 pb-6 last:border-b-0">
+                                <h3 class="font-semibold text-gray-800 mb-4"><?php echo $day_label; ?></h3>
+                                <?php if (!empty($day_slots)): ?>
+                                    <div class="space-y-2 mb-4">
+                                        <?php foreach ($day_slots as $slot): ?>
+                                            <div class="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                                                <span class="text-sm font-semibold text-gray-700">
+                                                    <?php echo date('g:i A', strtotime($slot['start_time'])); ?> - <?php echo date('g:i A', strtotime($slot['end_time'])); ?>
+                                                </span>
+                                                <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">Available</span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php else: ?>
+                                    <p class="text-sm text-gray-500 mb-4">No availability set for this day</p>
+                                <?php endif; ?>
+                                <div class="flex items-center space-x-4">
+                                    <div>
+                                        <label class="block text-xs text-gray-600 mb-1">Start Time</label>
+                                        <input type="time" name="availability[<?php echo $day; ?>][start_time]" class="px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs text-gray-600 mb-1">End Time</label>
+                                        <input type="time" name="availability[<?php echo $day; ?>][end_time]" class="px-3 py-2 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:outline-none">
+                                    </div>
+                                    <div class="flex items-end">
+                                        <label class="flex items-center space-x-2 cursor-pointer">
+                                            <input type="checkbox" name="availability[<?php echo $day; ?>][is_available]" value="1" <?php echo !empty($day_slots) ? 'checked' : ''; ?> class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                            <span class="text-sm text-gray-700">Available</span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="mt-6 flex justify-end">
+                        <button type="submit" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                            Save Availability
                         </button>
                     </div>
-                </div>
-                <div class="grid grid-cols-7 gap-2">
-                    <div class="text-center font-semibold text-gray-600 py-2">Sun</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Mon</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Tue</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Wed</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Thu</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Fri</div>
-                    <div class="text-center font-semibold text-gray-600 py-2">Sat</div>
-                </div>
-            </div>
-
-            <!-- Time Slots -->
-            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <h2 class="text-xl font-bold text-gray-800 mb-6">Available Time Slots</h2>
-                <div class="space-y-4">
-                    <div>
-                        <h3 class="font-semibold text-gray-800 mb-3">Monday - Friday</h3>
-                        <div class="grid grid-cols-4 gap-2">
-                            <button class="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">9:00 AM</button>
-                            <button class="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">10:00 AM</button>
-                            <button class="px-4 py-2 bg-blue-500 text-white rounded-lg font-semibold">11:00 AM</button>
-                            <button class="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">1:00 PM</button>
-                            <button class="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">2:00 PM</button>
-                            <button class="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">3:00 PM</button>
-                            <button class="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg font-semibold">4:00 PM</button>
-                        </div>
-                    </div>
-                </div>
-                <button class="mt-6 px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
-                    Save Availability
-                </button>
+                </form>
             </div>
         </main>
     </div>
 </body>
 </html>
-
-

@@ -85,11 +85,12 @@ function registerParent($full_name, $email, $password, $child_name, $child_age) 
         return ['success' => true, 'user_id' => $parent_id, 'message' => 'Account created successfully!'];
     } catch (Exception $e) {
         $db->rollback();
-        return ['success' => false, 'message' => 'Registration failed. Please try again.'];
+        error_log("Parent registration error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Registration failed: ' . $e->getMessage()];
     }
 }
 
-function registerTeacher($full_name, $email, $password, $specialization, $location, $license_file = null) {
+function registerTeacher($full_name, $email, $password, $specialization, $location, $license_file = null, $specializations = []) {
     $db = getDB();
     
     // Check if email already exists
@@ -126,11 +127,30 @@ function registerTeacher($full_name, $email, $password, $specialization, $locati
         $teacher_id = $db->insert_id;
         $teacherStmt->close();
         
-        // Insert specializations
-        $specStmt = $db->prepare("INSERT INTO teacher_specializations (teacher_id, specialization) VALUES (?, ?)");
-        $specStmt->bind_param("is", $teacher_id, $specialization);
-        $specStmt->execute();
-        $specStmt->close();
+        // Insert specializations (use provided array or single specialization)
+        $specs_to_insert = !empty($specializations) ? $specializations : [$specialization];
+        
+        // Remove duplicates and empty values
+        $specs_to_insert = array_unique(array_filter($specs_to_insert));
+        
+        if (!empty($specs_to_insert)) {
+            $specStmt = $db->prepare("INSERT INTO teacher_specializations (teacher_id, specialization) VALUES (?, ?)");
+            foreach ($specs_to_insert as $spec) {
+                $spec = trim($spec);
+                if (!empty($spec)) {
+                    $specStmt->bind_param("is", $teacher_id, $spec);
+                    try {
+                        $specStmt->execute();
+                    } catch (Exception $e) {
+                        // Ignore duplicate entry errors (UNIQUE constraint)
+                        if (strpos($e->getMessage(), 'Duplicate entry') === false) {
+                            throw $e;
+                        }
+                    }
+                }
+            }
+            $specStmt->close();
+        }
         
         $db->commit();
         
@@ -149,7 +169,8 @@ function registerTeacher($full_name, $email, $password, $specialization, $locati
         return ['success' => true, 'user_id' => $user_id, 'message' => 'Application submitted successfully! Your account will be reviewed within 1-2 business days.'];
     } catch (Exception $e) {
         $db->rollback();
-        return ['success' => false, 'message' => 'Registration failed. Please try again.'];
+        error_log("Registration error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Registration failed: ' . $e->getMessage()];
     }
 }
 

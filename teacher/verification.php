@@ -1,3 +1,39 @@
+<?php
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/auth.php';
+
+// Check authentication
+requireRole('teacher');
+
+$user_id = getCurrentUserId();
+$user = getUserData($user_id);
+$teacher = getTeacherByUserId($user_id);
+
+// Get user initials for avatar
+$initials = '';
+if ($user && $user['full_name']) {
+    $name_parts = explode(' ', $user['full_name']);
+    $initials = strtoupper(substr($name_parts[0], 0, 1) . (isset($name_parts[1]) ? substr($name_parts[1], 0, 1) : ''));
+}
+
+$verification_status = $teacher['verification_status'] ?? 'pending';
+$verified_at = $teacher['verified_at'] ?? null;
+$license_file = $teacher['license_file'] ?? null;
+
+// Status colors
+$status_colors = [
+    'approved' => ['bg' => 'bg-green-100', 'text' => 'text-green-700', 'icon' => 'fa-check-circle'],
+    'pending' => ['bg' => 'bg-yellow-100', 'text' => 'text-yellow-700', 'icon' => 'fa-clock'],
+    'rejected' => ['bg' => 'bg-red-100', 'text' => 'text-red-700', 'icon' => 'fa-times-circle']
+];
+
+$status_labels = [
+    'approved' => 'Verified',
+    'pending' => 'Pending Review',
+    'rejected' => 'Rejected'
+];
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -23,14 +59,17 @@
                 <span class="text-xl font-bold text-blue-600">LEARNSAFE.AI</span>
             </div>
             <div class="flex-1 text-center">
-                <p class="text-gray-800 font-semibold">Welcome Back, Emily!</p>
+                <p class="text-gray-800 font-semibold">Welcome Back, <?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?>!</p>
             </div>
             <div class="flex items-center space-x-4">
+                <a href="../api/logout.php" class="text-gray-600 hover:text-gray-800">
+                    <i class="fas fa-sign-out-alt text-xl cursor-pointer" title="Logout"></i>
+                </a>
                 <i class="fas fa-bell text-gray-600 text-xl cursor-pointer"></i>
                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span class="text-purple-600 font-bold">EJ</span>
+                    <span class="text-purple-600 font-bold"><?php echo htmlspecialchars($initials); ?></span>
                 </div>
-                <span class="text-gray-800 font-semibold">Emily Johnson</span>
+                <span class="text-gray-800 font-semibold"><?php echo htmlspecialchars($user['full_name'] ?? 'Teacher'); ?></span>
             </div>
         </div>
     </header>
@@ -81,64 +120,66 @@
             <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100 mb-6">
                 <div class="flex items-center justify-between mb-6">
                     <h2 class="text-xl font-bold text-gray-800">Account Status</h2>
-                    <span class="px-4 py-2 bg-green-100 text-green-700 rounded-full font-semibold">
-                        <i class="fas fa-check-circle mr-2"></i>Verified
+                    <span class="px-4 py-2 <?php echo $status_colors[$verification_status]['bg']; ?> <?php echo $status_colors[$verification_status]['text']; ?> rounded-full font-semibold">
+                        <i class="fas <?php echo $status_colors[$verification_status]['icon']; ?> mr-2"></i><?php echo $status_labels[$verification_status]; ?>
                     </span>
                 </div>
                 <div class="space-y-4">
-                    <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                        <div class="flex items-center space-x-3">
-                            <i class="fas fa-check-circle text-green-500 text-xl"></i>
-                            <div>
-                                <p class="font-semibold text-gray-800">Teaching License</p>
-                                <p class="text-sm text-gray-600">Verified on October 15, 2025</p>
+                    <?php if ($license_file): ?>
+                        <div class="flex items-center justify-between p-4 <?php echo $verification_status === 'approved' ? 'bg-green-50' : 'bg-gray-50'; ?> rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <i class="fas <?php echo $verification_status === 'approved' ? 'fa-check-circle text-green-500' : 'fa-file-alt text-gray-400'; ?> text-xl"></i>
+                                <div>
+                                    <p class="font-semibold text-gray-800">Teaching License</p>
+                                    <?php if ($verified_at): ?>
+                                        <p class="text-sm text-gray-600">Verified on <?php echo formatDate($verified_at); ?></p>
+                                    <?php else: ?>
+                                        <p class="text-sm text-gray-600">Pending review</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                            <?php if ($license_file): ?>
+                                <a href="../<?php echo htmlspecialchars($license_file); ?>" target="_blank" class="text-blue-600 hover:underline font-semibold">View</a>
+                            <?php endif; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                            <div class="flex items-center space-x-3">
+                                <i class="fas fa-file-alt text-gray-400 text-xl"></i>
+                                <div>
+                                    <p class="font-semibold text-gray-800">Teaching License</p>
+                                    <p class="text-sm text-gray-600">No license uploaded</p>
+                                </div>
                             </div>
                         </div>
-                        <button class="text-blue-600 hover:underline font-semibold">View</button>
-                    </div>
-                    <div class="flex items-center justify-between p-4 bg-green-50 rounded-lg">
-                        <div class="flex items-center space-x-3">
-                            <i class="fas fa-check-circle text-green-500 text-xl"></i>
-                            <div>
-                                <p class="font-semibold text-gray-800">Background Check</p>
-                                <p class="text-sm text-gray-600">Verified on October 15, 2025</p>
-                            </div>
-                        </div>
-                        <button class="text-blue-600 hover:underline font-semibold">View</button>
-                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
             <!-- Update Documents -->
-            <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-                <h2 class="text-xl font-bold text-gray-800 mb-6">Update Documents</h2>
-                <div class="space-y-6">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Teaching License</label>
-                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition cursor-pointer">
-                            <i class="fas fa-upload text-3xl text-gray-400 mb-4"></i>
-                            <p class="text-gray-600 font-semibold mb-2">Click to upload or update</p>
-                            <p class="text-sm text-gray-500">PDF, JPG, or PNG (max 10MB)</p>
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="hidden">
+            <?php if ($verification_status !== 'approved'): ?>
+                <div class="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+                    <h2 class="text-xl font-bold text-gray-800 mb-6">Update Documents</h2>
+                    <form id="verificationForm" method="POST" action="../api/teacher_update_verification.php" enctype="multipart/form-data">
+                        <div class="space-y-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-2">Teaching License</label>
+                                <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition cursor-pointer" onclick="document.getElementById('license_file').click()">
+                                    <i class="fas fa-upload text-3xl text-gray-400 mb-4"></i>
+                                    <p class="text-gray-600 font-semibold mb-2">Click to upload or update</p>
+                                    <p class="text-sm text-gray-500">PDF, JPG, or PNG (max 10MB)</p>
+                                    <input type="file" id="license_file" name="license_file" accept=".pdf,.jpg,.jpeg,.png" class="hidden" onchange="document.getElementById('licenseFileName').textContent = this.files[0] ? 'Selected: ' + this.files[0].name : ''">
+                                    <p id="licenseFileName" class="text-sm text-blue-600 mt-2"></p>
+                                </div>
+                            </div>
+                            <button type="submit" class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
+                                Submit for Review
+                            </button>
                         </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">Additional Certifications</label>
-                        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-blue-500 transition cursor-pointer">
-                            <i class="fas fa-upload text-3xl text-gray-400 mb-4"></i>
-                            <p class="text-gray-600 font-semibold mb-2">Click to upload additional documents</p>
-                            <p class="text-sm text-gray-500">PDF, JPG, or PNG (max 10MB)</p>
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png" class="hidden">
-                        </div>
-                    </div>
-                    <button class="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-semibold">
-                        Submit for Review
-                    </button>
+                    </form>
                 </div>
-            </div>
+            <?php endif; ?>
         </main>
     </div>
 </body>
 </html>
-
-

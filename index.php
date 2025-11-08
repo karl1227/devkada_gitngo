@@ -57,11 +57,42 @@
                     </a>
                 </div>
             </div>
-            <!-- Right Image -->
+            <!-- Right Image Carousel -->
             <div class="hidden md:block">
                 <div class="bg-white rounded-2xl shadow-xl p-8">
-                    <div class="bg-gradient-to-br from-blue-100 to-green-100 rounded-xl h-96 flex items-center justify-center">
-                        <i class="fas fa-chalkboard-teacher text-6xl text-blue-500"></i>
+                    <div class="relative bg-gradient-to-br from-blue-100 to-green-100 rounded-xl h-96 overflow-hidden">
+                        <!-- Carousel Container -->
+                        <div id="heroCarousel" class="relative h-full">
+                            <div class="flex transition-transform duration-500 ease-in-out h-full" id="heroCarouselTrack">
+                                <!-- Slide 1: Homepage Image -->
+                                <div class="min-w-full flex-shrink-0 h-full">
+                                    <img src="uploads/img/homepage.jpg" alt="LearnSafe.AI Homepage" class="w-full h-full object-cover rounded-xl">
+                                </div>
+                                <!-- Slide 2: Homepage1 Image -->
+                                <div class="min-w-full flex-shrink-0 h-full">
+                                    <img src="uploads/img/homepage1.jpeg" alt="LearnSafe.AI" class="w-full h-full object-cover rounded-xl">
+                                </div>
+                                <!-- Slide 3: Homepage2 Image -->
+                                <div class="min-w-full flex-shrink-0 h-full">
+                                    <img src="uploads/img/homepage2.jpg" alt="LearnSafe.AI" class="w-full h-full object-cover rounded-xl">
+                                </div>
+                            </div>
+                            
+                            <!-- Navigation Buttons -->
+                            <button id="heroPrevBtn" class="absolute left-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 rounded-full p-2 shadow-lg hover:bg-opacity-100 transition z-10">
+                                <i class="fas fa-chevron-left text-gray-700"></i>
+                            </button>
+                            <button id="heroNextBtn" class="absolute right-2 top-1/2 -translate-y-1/2 bg-white bg-opacity-80 rounded-full p-2 shadow-lg hover:bg-opacity-100 transition z-10">
+                                <i class="fas fa-chevron-right text-gray-700"></i>
+                            </button>
+                            
+                            <!-- Carousel Indicators -->
+                            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-2" id="heroCarouselIndicators">
+                                <button class="w-2 h-2 rounded-full bg-blue-500 transition" data-slide="0"></button>
+                                <button class="w-2 h-2 rounded-full bg-white bg-opacity-50 transition" data-slide="1"></button>
+                                <button class="w-2 h-2 rounded-full bg-white bg-opacity-50 transition" data-slide="2"></button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -235,7 +266,6 @@
     <footer class="bg-gray-800 text-white py-8">
         <div class="container mx-auto px-6 flex justify-between items-center">
             <p class="text-gray-400">© 2025 LearnSafe.AI — Supporting neurodiverse learners everywhere</p>
-            <a href="admin/login.php" class="text-gray-400 hover:text-white">Admin Login</a>
         </div>
     </footer>
 
@@ -246,6 +276,56 @@
     <div class="fixed bottom-4 right-4 w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center cursor-pointer">
         <i class="fas fa-question text-white"></i>
     </div>
+
+    <!-- Hero Carousel Script -->
+    <script>
+        let heroCurrentSlide = 0;
+        const heroTotalSlides = 3; // homepage.jpg, homepage1.jpeg, homepage2.jpg
+        const heroCarouselTrack = document.getElementById('heroCarouselTrack');
+        const heroIndicators = document.querySelectorAll('#heroCarouselIndicators button');
+        const heroPrevBtn = document.getElementById('heroPrevBtn');
+        const heroNextBtn = document.getElementById('heroNextBtn');
+
+        function updateHeroCarousel() {
+            heroCarouselTrack.style.transform = `translateX(-${heroCurrentSlide * 100}%)`;
+            
+            // Update indicators
+            heroIndicators.forEach((indicator, index) => {
+                if (index === heroCurrentSlide) {
+                    indicator.classList.remove('bg-white', 'bg-opacity-50');
+                    indicator.classList.add('bg-blue-500');
+                } else {
+                    indicator.classList.remove('bg-blue-500');
+                    indicator.classList.add('bg-white', 'bg-opacity-50');
+                }
+            });
+        }
+
+        function heroNextSlide() {
+            heroCurrentSlide = (heroCurrentSlide + 1) % heroTotalSlides;
+            updateHeroCarousel();
+        }
+
+        function heroPrevSlide() {
+            heroCurrentSlide = (heroCurrentSlide - 1 + heroTotalSlides) % heroTotalSlides;
+            updateHeroCarousel();
+        }
+
+        // Button event listeners
+        heroNextBtn.addEventListener('click', heroNextSlide);
+        heroPrevBtn.addEventListener('click', heroPrevSlide);
+
+        // Indicator event listeners
+        heroIndicators.forEach((indicator, index) => {
+            indicator.addEventListener('click', () => {
+                heroCurrentSlide = index;
+                updateHeroCarousel();
+            });
+        });
+
+        // Auto-play carousel (optional - uncomment to enable)
+        // setInterval(heroNextSlide, 4000);
+    </script>
 </body>
 </html>
 

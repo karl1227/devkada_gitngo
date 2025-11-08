@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/admin_functions.php';
 
 // Security check
@@ -202,9 +203,13 @@ $stats = getAdminDashboardStats();
                             $index = 0;
                             ?>
                             <?php if (!empty($specializations)): ?>
-                                <?php foreach ($specializations as $spec): ?>
+                                <?php foreach ($specializations as $spec): 
+                                    // Decode any existing HTML entities first, then encode properly
+                                    $specialization = html_entity_decode($spec['specialization'], ENT_QUOTES, 'UTF-8');
+                                    $specialization = htmlspecialchars($specialization, ENT_QUOTES, 'UTF-8');
+                                ?>
                                 <div class="flex items-center justify-between p-3 bg-<?php echo $colors[$index % count($colors)]; ?>-50 rounded-lg">
-                                    <span class="font-semibold text-gray-800"><?php echo htmlspecialchars($spec['specialization']); ?></span>
+                                    <span class="font-semibold text-gray-800"><?php echo $specialization; ?></span>
                                     <span class="text-gray-600"><?php echo $spec['count']; ?> teachers</span>
                                 </div>
                                 <?php 
